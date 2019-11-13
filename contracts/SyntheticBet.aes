@@ -1,0 +1,44 @@
+@compiler >= 4
+
+contract DataProvider =
+   entrypoint get : () => int
+
+contract SyntheticBet =
+   record state = { synthetics    : map(int, synthetic)
+                  , data_provider : DataProvider }
+
+   record synthetic = { asset     : string
+                      , side_1    : option(bet)
+                      , side_2    : option(bet)
+                      , timestamp : int
+                      , claimed   : bool }
+
+   record bet = { account   : address
+                , amount    : int }
+
+   stateful entrypoint init(provider : DataProvider) = { synthetics = {}, data_provider = provider }
+
+   payable stateful entrypoint place_bet(asset': string) : int =
+      let new_synthetic = { asset     = asset',
+                           side_1     = Some(set_bet(Call.caller, Call.value)),
+                           side_2     = None,
+                           timestamp  = Chain.timestamp,
+                           claimed    = false }
+      let synth_id = Map.size(state.synthetics)
+      put(state{ synthetics[synth_id] = new_synthetic })
+      synth_id
+
+   payable stateful entrypoint take_bet(id' : int) : unit =
+      is_value_enough(id')
+      let opposite_bet : option(bet) = Some(set_bet(Call.caller, Call.value))
+      put(state{ synthetics[id'].side_2 = opposite_bet })
+      put(state{ synthetics[id'].claimed = true })
+
+   function is_value_enough(id': int) =
+      switch(state.synthetics[id'].side_1)
+         None     => abort("no such bet")
+         Some(v)  =>
+            require(Call.value == v.amount, "VALUE_INCORRECT")
+
+   function set_bet(account': address, amount': int) : bet =
+      { account = account', amount = amount'}
