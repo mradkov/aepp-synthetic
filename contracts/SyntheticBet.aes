@@ -87,23 +87,21 @@ contract SyntheticBet =
          calculate(id, outcome)
 
    stateful function calculate(id: int, outcome: int) =
-      switch(Option.force(state.synthetics[id].side_1).prediction)
+      let side_1_force = Option.force(state.synthetics[id].side_1)
+      let side_2_force = Option.force(state.synthetics[id].side_2)
+      switch(side_1_force.prediction)
          true =>
             let percentage = state.synthetics[id].init_price / outcome * 100
-            let side_1 = Option.force(state.synthetics[id].side_1).amount + (Option.force(state.synthetics[id].side_1).amount * percentage)
-            let side_2 = Option.force(state.synthetics[id].side_2).amount - (Option.force(state.synthetics[id].side_2).amount * percentage)
-            let side_1_after = Option.force(state.synthetics[id].side_1)
-            let side_2_after = Option.force(state.synthetics[id].side_2)
-            put(state{ synthetics[id].side_2 = Some(set_bet(side_2_after.account, side_2, side_2_after.prediction)) })
-            put(state{ synthetics[id].side_1 = Some(set_bet(side_1_after.account, side_1, side_1_after.prediction)) })
+            let side_1 = side_1_force.amount + (side_1_force.amount * percentage)
+            let side_2 = side_2_force.amount - (side_2_force.amount * percentage)
+            put(state{ synthetics[id].side_2 = Some(set_bet(side_2_force.account, side_2, side_2_force.prediction)) })
+            put(state{ synthetics[id].side_1 = Some(set_bet(side_1_force.account, side_1, side_1_force.prediction)) })
          false =>
             let percentage = outcome / state.synthetics[id].init_price * 100
-            let side_1 = Option.force(state.synthetics[id].side_1).amount - (Option.force(state.synthetics[id].side_1).amount * percentage)
-            let side_2 = Option.force(state.synthetics[id].side_2).amount + (Option.force(state.synthetics[id].side_2).amount * percentage)
-            let side_1_after = Option.force(state.synthetics[id].side_1)
-            let side_2_after = Option.force(state.synthetics[id].side_2)
-            put(state{ synthetics[id].side_1 = Some(set_bet(side_1_after.account, side_1, side_1_after.prediction)) })
-            put(state{ synthetics[id].side_2 = Some(set_bet(side_2_after.account, side_2, side_2_after.prediction)) })
+            let side_1 = side_1_force.amount - (side_1_force.amount * percentage)
+            let side_2 = side_2_force.amount + (side_2_force.amount * percentage)
+            put(state{ synthetics[id].side_1 = Some(set_bet(side_1_force.account, side_1, side_1_force.prediction)) })
+            put(state{ synthetics[id].side_2 = Some(set_bet(side_2_force.account, side_2, side_2_force.prediction)) })
 
    function require_not_liquidated(id: int) : unit =
       require(state.synthetics[id].liquidated == false, "ALREADY_LIQUIDATED") 
