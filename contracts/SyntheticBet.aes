@@ -28,14 +28,23 @@ contract SyntheticBet =
       put(state{ synthetics[synth_id] = new_synthetic })
       synth_id
 
-   payable stateful entrypoint take_bet(id' : int) : unit =
-      is_value_enough(id')
+   payable stateful entrypoint take_bet(id : int) : unit =
+      is_value_enough(id)
       let opposite_bet : option(bet) = Some(set_bet(Call.caller, Call.value))
-      put(state{ synthetics[id'].side_2 = opposite_bet })
-      put(state{ synthetics[id'].claimed = true })
+      put(state{ synthetics[id].side_2 = opposite_bet })
+      put(state{ synthetics[id].claimed = true })
 
-   function is_value_enough(id': int) =
-      switch(state.synthetics[id'].side_1)
+   entrypoint get_by_id(id: int) : synthetic =
+      require(Map.member(id, state.synthetics), "INCORRECT_ID")
+      state.synthetics[id]
+
+   entrypoint price() : int = get_price()
+
+   function get_price() : int =
+      state.data_provider.get()
+
+   function is_value_enough(id: int) =
+      switch(state.synthetics[id].side_1)
          None     => abort("no such bet")
          Some(v)  =>
             require(Call.value == v.amount, "VALUE_INCORRECT")
