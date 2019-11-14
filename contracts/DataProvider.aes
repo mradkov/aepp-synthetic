@@ -1,7 +1,7 @@
 @compiler >= 4
 
 contract DataProvider =
-   type state = int
-   entrypoint init() : state = 1
-   entrypoint get() : int = state
-   stateful entrypoint update(x: int) = put(x)
+  type state = int
+  entrypoint init() : state = 1
+  entrypoint get() : int = state
+  stateful entrypoint update(x: int) = put(x)

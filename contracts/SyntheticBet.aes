@@ -3,120 +3,122 @@
 include "Option.aes"
 
 contract DataProvider =
-   entrypoint get : () => int
+  entrypoint get : () => int
 
 contract SyntheticBet =
-   record state = { synthetics    : map(int, synthetic)
-                  , data_provider : DataProvider
-                  , bet_duraiotn  : int }
+  record state = { synthetics    : map(int, synthetic)
+                 , data_provider : DataProvider
+                 , expiration  : int }
 
-   record synthetic = { asset     : string
-                      , side_1    : option(bet)
-                      , side_2    : option(bet)
-                      , timestamp : int
-                      , init_price: int
-                      , expiration: int
-                      , claimed   : bool
-                      , settled   : bool
-                      , liquidated: bool}
+  record synthetic = { asset     : string
+                     , side_1    : option(bet)
+                     , side_2    : option(bet)
+                     , timestamp : int
+                     , init_price: int
+                     , expiration: int
+                     , claimed   : bool
+                     , settled   : bool
+                     , liquidated: bool }
 
-   record bet = { account   : address
-                , amount    : int
-                , prediction: bool }
+  record bet = { account   : address
+               , amount    : int
+               , prediction: bool }
 
-   stateful entrypoint init(provider : DataProvider, duration: int) =
-      { synthetics    = {},
-        data_provider = provider,
-        bet_duraiotn = duration }
+  stateful entrypoint init(provider : DataProvider, expiration: int) =
+    { synthetics    = {},
+      data_provider = provider,
+      expiration    = expiration }
 
-   payable stateful entrypoint place_bet(asset': string, prediction: bool) : int =
-      let new_synthetic = { asset     = asset',
-                           side_1     = Some(set_bet(Call.caller, Call.value, prediction)),
-                           side_2     = None,
-                           timestamp  = Chain.timestamp,
-                           init_price = get_price(),
-                           expiration = Chain.block_height + state.bet_duraiotn,
-                           claimed    = false,
-                           settled    = false,
-                           liquidated = false }
-      let synth_id = Map.size(state.synthetics)
-      put(state{ synthetics[synth_id] = new_synthetic })
-      synth_id
+  payable stateful entrypoint place_bet(asset': string, prediction: bool) : int =
+    let new_synthetic = { asset     = asset',
+                          side_1     = Some(set_bet(Call.caller, Call.value, prediction)),
+                          side_2     = None,
+                          timestamp  = Chain.timestamp,
+                          init_price = get_price(),
+                          expiration = Chain.block_height + state.expiration,
+                          claimed    = false,
+                          settled    = false,
+                          liquidated = false }
+    let synth_id = Map.size(state.synthetics)
+    put(state{ synthetics[synth_id] = new_synthetic })
+    synth_id
 
-   payable stateful entrypoint take_bet(id : int, prediction: bool) : unit =
-      is_value_enough(id)
-      let opposite_bet : option(bet) = Some(set_bet(Call.caller, Call.value, prediction))
-      put(state{ synthetics[id].side_2 = opposite_bet })
-      put(state{ synthetics[id].claimed = true })
+  payable stateful entrypoint take_bet(id : int, prediction: bool) : bool =
+    is_value_enough(id)
+    let opposite_bet : option(bet) = Some(set_bet(Call.caller, Call.value, prediction))
+    put(state{ synthetics[id].side_2 = opposite_bet })
+    put(state{ synthetics[id].claimed = true })
+    true
 
-   entrypoint get_by_id(id: int) : synthetic =
-      require(Map.member(id, state.synthetics), "INCORRECT_ID")
-      state.synthetics[id]
+  entrypoint get_by_id(id: int) : synthetic =
+    require(Map.member(id, state.synthetics), "INCORRECT_ID")
+    state.synthetics[id]
 
-   entrypoint get_bets() : map(int, synthetic) = state.synthetics
+  entrypoint get_bets() : map(int, synthetic) = state.synthetics
 
-   entrypoint price() : int = get_price()
+  entrypoint price() : int = get_price()
 
-   stateful entrypoint settle(id: int) : unit =
-      require_not_liquidated(id)
-      require_expired(id)
-      let outcome = get_price()
-      let synth = state.synthetics[id]
-      if (outcome > synth.init_price)
-         // side_1 win
-         // calculate proportionally depending on the outcome of the bet
-         calculate(id, outcome)
-      elif (outcome < synth.init_price)
-         // side_2 win
-         // calculate proportionally depending on the outcome of the bet
-         calculate(id, outcome)
-      put(state{ synthetics[id].settled = true })
+  stateful entrypoint settle(id: int) : unit =
+    require_not_liquidated(id)
+    require_expired(id)
+    let outcome = get_price()
+    let synth = state.synthetics[id]
+    if (outcome > synth.init_price)
+      // side_1 win
+      // calculate proportionally depending on the outcome of the bet
+      calculate(id, outcome)
+    elif (outcome < synth.init_price)
+      // side_2 win
+      // calculate proportionally depending on the outcome of the bet
+      calculate(id, outcome)
+    put(state{ synthetics[id].settled = true })
 
    // liquidate earlier
-   stateful entrypoint liquidate(id: int) : unit =
-      liquidate_position(id)
+  stateful entrypoint liquidate(id: int) : bool =
+    liquidate_position(id)
+    true
 
-   stateful function liquidate_position(id: int) =
-      let outcome = get_price()   
-      // if the price is two times higher than the intial price
-      // or if the price has come to 0
-      // we can liquidate immediately  
-      if (outcome > state.synthetics[id].init_price * 2)
-         calculate(id, outcome)
-      elif (outcome == 0)
-         calculate(id, outcome)
+  stateful function liquidate_position(id: int) =
+    let outcome = get_price()   
+    // if the price is two times higher than the intial price
+    // or if the price has come to 0
+    // we can liquidate immediately  
+    if (outcome > state.synthetics[id].init_price * 2)
+      calculate(id, outcome)
+    elif (outcome == 0)
+      calculate(id, outcome)
 
-   stateful function calculate(id: int, outcome: int) =
-      let side_1_force = Option.force(state.synthetics[id].side_1)
-      let side_2_force = Option.force(state.synthetics[id].side_2)
-      switch(side_1_force.prediction)
-         true =>
-            let percentage = state.synthetics[id].init_price / outcome * 100
-            let side_1 = side_1_force.amount + (side_1_force.amount * percentage)
-            let side_2 = side_2_force.amount - (side_2_force.amount * percentage)
-            put(state{ synthetics[id].side_2 = Some(set_bet(side_2_force.account, side_2, side_2_force.prediction)) })
-            put(state{ synthetics[id].side_1 = Some(set_bet(side_1_force.account, side_1, side_1_force.prediction)) })
-         false =>
-            let percentage = outcome / state.synthetics[id].init_price * 100
-            let side_1 = side_1_force.amount - (side_1_force.amount * percentage)
-            let side_2 = side_2_force.amount + (side_2_force.amount * percentage)
-            put(state{ synthetics[id].side_1 = Some(set_bet(side_1_force.account, side_1, side_1_force.prediction)) })
-            put(state{ synthetics[id].side_2 = Some(set_bet(side_2_force.account, side_2, side_2_force.prediction)) })
+  stateful function calculate(id: int, outcome: int) =
+    let side_1_force = Option.force(state.synthetics[id].side_1)
+    let side_2_force = Option.force(state.synthetics[id].side_2)
+    switch(side_1_force.prediction)
+      true =>
+        let percentage = state.synthetics[id].init_price / outcome * 100
+        let side_1 = side_1_force.amount + (side_1_force.amount * percentage)
+        let side_2 = side_2_force.amount - (side_2_force.amount * percentage)
+        put(state{ synthetics[id].side_2 = Some(set_bet(side_2_force.account, side_2, side_2_force.prediction)) })
+        put(state{ synthetics[id].side_1 = Some(set_bet(side_1_force.account, side_1, side_1_force.prediction)) })
+      false =>
+        let percentage = outcome / state.synthetics[id].init_price * 100
+        let side_1 = side_1_force.amount - (side_1_force.amount * percentage)
+        let side_2 = side_2_force.amount + (side_2_force.amount * percentage)
+        put(state{ synthetics[id].side_1 = Some(set_bet(side_1_force.account, side_1, side_1_force.prediction)) })
+        put(state{ synthetics[id].side_2 = Some(set_bet(side_2_force.account, side_2, side_2_force.prediction)) })
 
-   function require_not_liquidated(id: int) : unit =
-      require(state.synthetics[id].liquidated == false, "ALREADY_LIQUIDATED") 
+  function require_not_liquidated(id: int) : unit =
+    require(state.synthetics[id].liquidated == false, "ALREADY_LIQUIDATED") 
 
-   function require_expired(id: int) : unit =
-      require(Chain.block_height > state.synthetics[id].expiration, "NOT_EXPIRED_YET")
+  function require_expired(id: int) : unit =
+    require(Chain.block_height > state.synthetics[id].expiration, "NOT_EXPIRED_YET")
 
-   function get_price() : int =
-      state.data_provider.get()
+  function get_price() : int =
+    state.data_provider.get()
 
-   function is_value_enough(id: int) =
-      switch(state.synthetics[id].side_1)
-         None     => abort("no such bet")
-         Some(v)  =>
-            require(Call.value == v.amount, "VALUE_INCORRECT")
+  function is_value_enough(id: int) =
+    switch(state.synthetics[id].side_1)
+      None     => abort("no such bet")
+      Some(v)  =>
+        require(Call.value == v.amount, "VALUE_INCORRECT")
 
-   function set_bet(account': address, amount': int, prediction': bool) : bet =
-      { account = account', amount = amount', prediction = prediction'}
+  function set_bet(account': address, amount': int, prediction': bool) : bet =
+    { account = account', amount = amount', prediction = prediction'}
