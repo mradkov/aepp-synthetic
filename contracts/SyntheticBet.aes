@@ -2,13 +2,10 @@
 
 include "Option.aes"
 
-contract DataProvider =
-  entrypoint get : () => int
-
 contract SyntheticBet =
   record state = { synthetics    : map(int, synthetic)
                  , data_provider : DataProvider
-                 , expiration  : int }
+                 , expiration    : int }
 
   record synthetic = { asset     : string
                      , side_1    : option(bet)

@@ -4,6 +4,7 @@
   "description": "This is the default package.json generated for your project",
   "main": "index.js",
   "scripts": {
+    "feed": "node -r esm data-feed-oracle/index.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "author": "",
@@ -11,6 +12,7 @@
   "dependencies": {
     "@aeternity/aepp-sdk": "6.0.0",
     "aeproject-lib": "1.0.2",
+    "esm": "^3.2.25",
     "yarn": "1.19.1"
   }
 }
